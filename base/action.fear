@@ -22,6 +22,11 @@ Action[T:*]: {
   mut !: T -> this.run{.ok(x) -> x; .info(i) -> Error!i};
   mut .ok  : mut Opt[T] -> this.run{.ok x -> Opts#x; .info _ -> {}};
   mut .info: Opt[Info]  -> this.run[Opt[Info]]{.ok _ -> {}; .info i -> Opts#i};
+  mut .context(msg: read LazyInfo): mut Action[T] -> { m -> this.run {
+    .ok x -> m.ok(x);
+    .info i -> m.info(msg#.info + i)
+    }};
+
   mut .assertOk: Void -> this.run{
     .ok _ -> {};
     .info i -> Assert.msg(`Success expected but an Info was thrown:` | i.str);
@@ -30,10 +35,32 @@ Action[T:*]: {
     .ok _ -> Assert.msg `Failure expected but nothing was thrown`;
     .info _->{};
     };
-  //mut .assertInfo(constraint1: Str): Void -> this.run{
-  //  .ok _ -> Assert.msg `Failure expected containing`^constraint1^`but nothing was thrown`;
-  //  .info _->{};//checking containmenet is not obvious
-  //  };//TODO: this can be a good exercise to implement this directl in Fearless
+
+  mut .recover(recoveryMechanism: mut MF[Info, mut Opt[T]]): mut Action[T] -> {m -> this.run {
+    .ok x -> m.ok(x);
+    .info i -> recoveryMechanism#i .match {
+       .some x' -> m.ok(x');
+       .empty -> m.info(i);
+      }
+    }};
+
+
+  mut .catch(fallback: mut MF[Info, T]): T -> this.run {
+    .ok t -> t;
+    .info i -> fallback#i;
+    };
+
+  /// ``this.assertInfo constraint`` asserts that this action fails and that the failure info satisfies the given constraint.
+  //> .checkNonDetErr({::}, {Try#{1 / 0}.assertInfo{::.isMsg{::.contains "divide by zero"}}});
+  mut .assertInfo(constraint: LazyInfoValidator): Void -> this.run{
+    .ok _ -> Assert.msg "Failure expected but nothing was thrown";
+    .info info ->
+      Assert!(
+        constraint#(SuccessfulInfoValidator {.close -> info})#,
+        {"Failure correctly occurred but error info doesn't match constraint."
+        | "Got: "+info}
+        )
+    }; // TODO: Should InfoValidator implement ToStr so it can be used in this error message?
   }
 
 ActionMatch[T:*,R:*]: {
