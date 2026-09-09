@@ -1,11 +1,11 @@
 package base;
 
 import io.github.humbleui.skija.Canvas;
+import io.github.humbleui.skija.Data;
 import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.FontEdging;
 import io.github.humbleui.skija.FontHinting;
 import io.github.humbleui.skija.FontMgr;
-import io.github.humbleui.skija.FontStyle;
 import io.github.humbleui.skija.Image;
 import io.github.humbleui.skija.ImageInfo;
 import io.github.humbleui.skija.Paint;
@@ -15,17 +15,68 @@ import io.github.humbleui.skija.PathBuilder;
 import io.github.humbleui.skija.PathOp;
 import io.github.humbleui.skija.SamplingMode;
 import io.github.humbleui.skija.Surface;
+import io.github.humbleui.skija.TextLine;
 import io.github.humbleui.skija.Typeface;
+import io.github.humbleui.skija.shaper.FontRun;
+import io.github.humbleui.skija.shaper.HbIcuScriptRunIterator;
+import io.github.humbleui.skija.shaper.IcuBidiRunIterator;
+import io.github.humbleui.skija.shaper.Shaper;
+import io.github.humbleui.skija.shaper.ShapingOptions;
+import io.github.humbleui.skija.shaper.TextLineRunHandler;
+import io.github.humbleui.skija.shaper.TrivialLanguageRunIterator;
 import io.github.humbleui.types.RRect;
 import io.github.humbleui.types.Rect;
 import java.awt.Dimension;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import static base.Scopes.*;
 
 interface Sk{
   Paint paint = makePaint();
-  Typeface typeface = typeface();
-  HashMap<Integer, Font> fonts = new HashMap<>();
+  // Lookup order. The script fonts must precede Math: it has isolated Arabic
+  // letters, and would win them from the Arabic font, which joins them.
+  String[] fontFiles = {
+    "NotoSans-Regular.ttf",
+    "NotoSansArabic-Regular.ttf",
+    "NotoSansHebrew-Regular.ttf",
+    "NotoSansThaana-Regular.ttf",
+    "NotoSansSyriac-Regular.ttf",
+    "NotoSansArmenian-Regular.ttf",
+    "NotoSansGeorgian-Regular.ttf",
+    "NotoSansEthiopic-Regular.ttf",
+    "NotoSansNKo-Regular.ttf",
+    "NotoSansTifinagh-Regular.ttf",
+    "NotoSansDevanagari-Regular.ttf",
+    "NotoSansBengali-Regular.ttf",
+    "NotoSansGurmukhi-Regular.ttf",
+    "NotoSansGujarati-Regular.ttf",
+    "NotoSansOriya-Regular.ttf",
+    "NotoSansTamil-Regular.ttf",
+    "NotoSansTelugu-Regular.ttf",
+    "NotoSansKannada-Regular.ttf",
+    "NotoSansMalayalam-Regular.ttf",
+    "NotoSansSinhala-Regular.ttf",
+    "NotoSansOlChiki-Regular.ttf",
+    "NotoSansMeeteiMayek-Regular.ttf",
+    "NotoSansThai-Regular.ttf",
+    "NotoSansLao-Regular.ttf",
+    "NotoSansKhmer-Regular.ttf",
+    "NotoSansMyanmar-Regular.ttf",
+    "NotoSerifTibetan-Regular.ttf",
+    "NotoSansCherokee-Regular.ttf",
+    "NotoSansCanadianAboriginal-Regular.ttf",
+    "NotoSansSymbols2-Regular.ttf",
+    "NotoSansSymbols-Regular.ttf",
+    "NotoSansMath-Regular.ttf",
+    "NotoSansCJKsc-Regular.otf",
+    "Twemoji.Mozilla.ttf"};
+  int emoji = fontFiles.length - 1;
+  Typeface[] typefaces = new Typeface[fontFiles.length];
+  HashMap<Long, Font> fonts = new HashMap<>();
+  HashMap<Integer, Integer> fontByCp = new HashMap<>();
+  Shaper shaper = Shaper.makeShaperDrivenWrapper();
 
   static Paint makePaint(){
     var p = new Paint();
@@ -33,36 +84,72 @@ interface Sk{
     p.setMode(PaintMode.FILL);
     return p;
   }
-  // TODO(fonts): typeface resolution is platform-dependent: we take whatever
-  // the OS resolves for Segoe UI / Arial / Consolas, so text pixels differ
-  // across machines even though rendering is otherwise deterministic. The plan
-  // is to bundle our own font(s) so text is identical everywhere. There is
-  // deliberately NO glyph fallback: characters missing from the selected
-  // typeface render as tofu boxes, identically on every machine, instead of
-  // being silently substituted from whichever random font the host has
-  // installed. Keep fallback disabled after bundling, so output never depends
-  // on glyphs outside the bundled set.
-  static Typeface typeface(){
-    var fm = FontMgr.getDefault();
-    var t = fm.matchFamilyStyle("Segoe UI", FontStyle.NORMAL);
-    if (t != null){ return t; }
-    t = fm.matchFamilyStyle("Arial", FontStyle.NORMAL);
-    if (t != null){ return t; }
-    t = fm.matchFamilyStyle("Consolas", FontStyle.NORMAL);
-    if (t != null){ return t; }
-    throw new Error("Could not find a usable Skija font");
+
+  static Typeface typeface(int i){
+    if (typefaces[i] == null){ typefaces[i] = FontMgr.getDefault().makeFromData(Data.makeFromBytes(fontBytes(fontFiles[i]))); }
+    return typefaces[i];
   }
 
-  static Font font(AWidget s){
-    int size = h(s.textSize);
-    Font f = fonts.get(size);
-    if (f != null){ return f; }
-    f = new Font(typeface, size);
-    f.setSubpixel(true);
-    f.setEdging(FontEdging.ANTI_ALIAS);
-    f.setHinting(FontHinting.NONE);
-    fonts.put(size, f);
-    return f;
+  static byte[] fontBytes(String name){
+    try (var in = Sk.class.getResourceAsStream(name)){ return in.readAllBytes(); }
+    catch (IOException e){ throw new UncheckedIOException(e); }
+  }
+
+  static Font font(int i, int size){
+    return fonts.computeIfAbsent((long) i << 32 | size, _ -> new Font(typeface(i), size)
+      .setSubpixel(true)
+      .setEdging(FontEdging.ANTI_ALIAS)
+      .setHinting(FontHinting.NONE));
+  }
+
+  static int fontOf(int cp, boolean emojiFirst){
+    return fontByCp.computeIfAbsent(cp << 1 | (emojiFirst ? 1 : 0), _ -> search(cp, emojiFirst));
+  }
+
+  static int search(int cp, boolean emojiFirst){
+    if (emojiFirst && typeface(emoji).getUTF32Glyph(cp) != 0){ return emoji; }
+    for (int i = 0; i < fontFiles.length; i++){
+      if (typeface(i).getUTF32Glyph(cp) != 0){ return i; }
+    }
+    return 0;
+  }
+
+  static boolean sticky(int cp){
+    int t = Character.getType(cp);
+    return t == Character.NON_SPACING_MARK || t == Character.ENCLOSING_MARK
+      || t == Character.COMBINING_SPACING_MARK || t == Character.FORMAT || Character.isEmojiModifier(cp);
+  }
+
+  static TextLine shape(String text, int size){
+    var runs = new ArrayList<FontRun>();
+    int font = -1;
+    for (int i = 0, prev = -1; i < text.length();){
+      int cp = text.codePointAt(i);
+      int next = i + Character.charCount(cp);
+      if (font < 0 || !(sticky(cp) || prev == 0x200D)){
+        int nx = next < text.length() ? text.codePointAt(next) : -1;
+        int f = fontOf(cp, nx == 0xFE0F || Character.isEmojiPresentation(cp));
+        if (font >= 0 && f != font){ runs.add(new FontRun(i, font(font, size))); }
+        font = f;
+      }
+      prev = cp;
+      i = next;
+    }
+    if (font >= 0){ runs.add(new FontRun(text.length(), font(font, size))); }
+    try (var handler = new TextLineRunHandler(text); var bidi = new IcuBidiRunIterator(text, 0xFE); var script = new HbIcuScriptRunIterator(text)){
+      shaper.shape(text, runs.iterator(), bidi, script, new TrivialLanguageRunIterator(text, "en"), ShapingOptions.DEFAULT, Float.POSITIVE_INFINITY, handler);
+      return handler.makeLine();
+    }
+  }
+
+  static TextLine line(String text, AWidget s){
+    var key = h(s.textSize) + " " + text;
+    if (!key.equals(s.lineKey)){
+      if (s.line != null){ s.line.close(); }
+      s.line = shape(text, h(s.textSize));
+      s.lineKey = key;
+    }
+    return s.line;
   }
 
   static int color(Color$1c$0 c){
@@ -94,10 +181,9 @@ interface Sk{
   }
 
   static Dimension textSize(String text, AWidget s){
-    var f = font(s);
     return new Dimension(
-      (int) Math.ceil(f.measureTextWidth(text)),
-      (int) Math.ceil(f.getMetrics().getHeight()));
+      (int) Math.ceil(line(text, s).getWidth()),
+      (int) Math.ceil(font(0, h(s.textSize)).getMetrics().getHeight()));
   }
 
   static Dimension textSizeWithInsets(String text, AWidget s){
@@ -115,9 +201,8 @@ interface Sk{
 
   static void text(Canvas cv, String text, AWidget s, float dx, float dy){
     var c = s.component;
-    var f = font(s);
-    var fm = f.getMetrics();
-    float textW = f.measureTextWidth(text);
+    var line = line(text, s);
+    var fm = font(0, h(s.textSize)).getMetrics();
     float textH = fm.getHeight();
     int x0 = w(s.left);
     int y0 = h(s.top);
@@ -128,7 +213,7 @@ interface Sk{
     cv.clipRect(Rect.makeXYWH(x0 + dx, y0 + dy, cw, ch));
     paint.setMode(PaintMode.FILL);
     paint.setColor(color(s.foreground));
-    cv.drawString(text, x0 + (cw - textW) / 2 + dx, y0 + (ch - textH) / 2 - fm.getAscent() + dy, f, paint);
+    cv.drawTextLine(line, x0 + (cw - line.getWidth()) / 2 + dx, y0 + (ch - textH) / 2 - fm.getAscent() + dy, paint);
     cv.restoreToCount(save);
   }
 

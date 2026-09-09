@@ -21,6 +21,7 @@ import io.github.humbleui.skija.ColorType;
 import io.github.humbleui.skija.ImageInfo;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.Path;
+import io.github.humbleui.skija.TextLine;
 
 import static base.Scopes.*;
 
@@ -57,11 +58,11 @@ class _Button extends AWidget implements Button$2o$0{
 
   _Button(_Frame frame){ super(frame); }
 
-  @Override public Object mut$text$1(Object t){
-    var s = ((Str$c$0Instance) t).val();
+  @Override public Object mut$uText$1(Object t){
+    var s = ustr(t);
     return reStyle(() -> text = s);
   }
-  @Override public Object read$text$0(){ return new Str$c$0Instance(text); }
+  @Override public Object read$uText$0(){ return UStr$s$0Instance.instance(text); }
   @Override public Object mut$action$1(Object r){
     frame.onEdtAndWait(() -> actions.add((MF$7$1) r));
     return this;
@@ -75,11 +76,11 @@ class _Label extends AWidget implements Label$1c$0{
 
   _Label(_Frame frame){ super(frame); }
 
-  @Override public Object mut$text$1(Object t){
-    var s = ((Str$c$0Instance) t).val();
+  @Override public Object mut$uText$1(Object t){
+    var s = ustr(t);
     return reStyle(() -> text = s);
   }
-  @Override public Object read$text$0(){ return new Str$c$0Instance(text); }
+  @Override public Object read$uText$0(){ return UStr$s$0Instance.instance(text); }
   @Override Dimension autoSize(){ return Sk.textSizeWithInsets(text, this); }
   @Override void sk(Canvas cv){
     Sk.background(cv, this);
@@ -160,6 +161,8 @@ abstract class AWidget implements Widget$2o$1{
   Color$1c$0 foreground = (Color$1c$0) Color$1c$0.instance;
   Color$1c$0 background = (Color$1c$0) Color$1c$0.instance.imm$transparent$0();
   HeightNat$lg$0 textSize = (HeightNat$lg$0) HeightNat$lg$0.instance.read$$hash$1(defText);
+  TextLine line;
+  String lineKey;
   // Read live by CenteredFlowLayout; only _Pane exposes Fearless methods to
   // change them, but they live here alongside the other style fields.
   boolean vertical = false;
@@ -324,7 +327,7 @@ class _Frame implements Frame$1c$0{
   // but there is no border to drag, so the user cannot actually resize it.
   private WidthNat$as$0 frameW;
   private HeightNat$lg$0 frameH;
-  private Str$c$0 title = new Str$c$0Instance("");
+  private String title = "";
   private boolean maximized;
   private boolean resizable;
   private boolean undecorated;
@@ -521,7 +524,7 @@ class _Frame implements Frame$1c$0{
     assert SwingUtilities.isEventDispatchThread();
     assert top != null;
 
-    frame.setTitle(((Str$c$0Instance) title).val());
+    frame.setTitle(title);
     forceTopStyle();
 
     frame.setContentPane(top.component);
@@ -671,9 +674,9 @@ class _Frame implements Frame$1c$0{
     });
     return this;
   }
-  @Override public Object mut$title$1(Object t){
-    title = (Str$c$0) t;
-    if (started){ onEdtAndWait(() -> frame.setTitle(((Str$c$0Instance) title).val())); }
+  @Override public Object mut$uTitle$1(Object t){
+    title = ustr(t);
+    if (started){ onEdtAndWait(() -> frame.setTitle(title)); }
     return this;
   }
   @Override public Object mut$fps$1(Object f){
@@ -689,7 +692,7 @@ class _Frame implements Frame$1c$0{
   // Getters. All safe from the queue thread: title/fps are read under the
   // single-mutator model, elapsed is volatile, the location getters hop to
   // the EDT for the real, current window position (including user drags).
-  @Override public Object read$title$0(){ return title; }
+  @Override public Object read$uTitle$0(){ return UStr$s$0Instance.instance(title); }
   @Override public Object read$fps$0(){ return fps; }
   @Override public Object read$elapsed$0(){ return elapsed; }
   @Override public Object read$screenSizeW$0(){ return screenSizeW; }
