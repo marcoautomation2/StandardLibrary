@@ -22,4 +22,8 @@ class Scopes{
   static int green(Object g){ return byt(((Green$1c$0) g).read$get$0()); }
   static int blue(Object b){ return byt(((Blue$o$0) b).read$get$0()); }
   static int alpha(Object a){ return byt(((Alpha$1c$0) a).read$get$0()); }
+  static String ustr(Object u){
+    var cps = ((UStr$s$0Instance) u).val();
+    return new String(cps, 0, cps.length);
+  }
 }
