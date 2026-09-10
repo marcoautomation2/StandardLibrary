@@ -5,3 +5,5 @@
 /guiLibrary/srcStdLib
 .fearless_out/
 .out/
+integrationTests/testBasketball/.project
+integrationTests/testUnitTests/.project
