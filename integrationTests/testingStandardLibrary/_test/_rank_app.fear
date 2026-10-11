@@ -101,6 +101,7 @@ MyTests:UnitTests{::
   .test GuiSetterTests
   .test GuiConnectedTests
   .test GuiKeyTests
+  .test GuiImageTests
   .test TestList
   .test TestESparseList
   .test TestMultiFlowFence
